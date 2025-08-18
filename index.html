@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Weekly Turn (Firestore Persist)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;
+      background:linear-gradient(180deg,#0ea5e9 0%,#0b8fcf 40%,#0878b4 100%);
+      color:#fff;min-height:100vh;display:grid;place-items:center;padding:24px}
+    .wrap{width:100%;max-width:520px;background:#111827;border-radius:16px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25);overflow:hidden}
+    header{padding:18px 20px;background:rgba(255,255,255,.06);
+      display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:18px;margin:0}
+    .sub{font-size:12px;color:#9ca3af;margin-top:4px}
+    .list{}
+    .row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;
+      padding:16px 20px;border-top:1px solid #1f2937}
+    .row:first-child{border-top:0}
+    .name{font-size:18px;font-weight:600}
+    .row.current{background:rgba(34,197,94,.12);outline:2px solid rgba(34,197,94,.45)}
+    .row.current .name{color:#22c55e}
+    button{appearance:none;border:0;border-radius:10px;padding:10px 14px;font-weight:700;
+      color:#fff;background:#0ea5e9;cursor:pointer}
+    button:active{background:#0284c7}
+    button[disabled]{opacity:.4;cursor:default}
+    footer{padding:12px 16px 18px;display:flex;justify-content:space-between;
+      color:#9ca3af;font-size:12px}
+    .pill{background:#22c55e;color:#052e16;border-radius:999px;padding:4px 10px;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Weekly Turn</h1>
+        <div class="sub" id="subtext">Persists in Firebase (no auto-switch)</div>
+      </div>
+      <span class="pill" id="weekInfo">—</span>
+    </header>
+
+    <div class="list" id="list"></div>
+
+    <footer>
+      <div>Saved online • Refresh-safe</div>
+      <div class="sub" id="status">—</div>
+    </footer>
+  </div>
+
+  <!-- Firebase (v10 modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, onSnapshot, runTransaction
+    } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
+
+    /* ======= YOUR NAMES (edit here) ======= */
+    const FRIENDS = ["Saadaq", "Hanad", "Salmaan", "Yonka", "Zizu"];
+
+    /* ======= FIREBASE CONFIG (replace) ======= */
+    // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+   // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyCmfFUIRg4NeKcuCZ5TzNWPSjcZtnonTjY",
+  authDomain: "sadaqahg-274f0.firebaseapp.com",
+  projectId: "sadaqahg-274f0",
+  storageBucket: "sadaqahg-274f0.firebasestorage.app",
+  messagingSenderId: "516273061226",
+  appId: "1:516273061226:web:93e7bf61c0482e4ca67913",
+  measurementId: "G-ESCK8F3J9Y"
+};
+    const app = initializeApp(firebaseConfig);
+    const db  = getFirestore(app);
+
+    /* ======= ROOM DOC ======= */
+    const ROOM_ID = "sadaqaha";
+    const roomRef = doc(db, "rooms", ROOM_ID);
+
+    /* ======= UI REFS ======= */
+    const listEl   = document.getElementById("list");
+    const weekInfo = document.getElementById("weekInfo");
+    const statusEl = document.getElementById("status");
+
+    let currentIndex = 0; // live value from Firestore
+
+    function render() {
+      listEl.innerHTML = "";
+      FRIENDS.forEach((name, i) => {
+        const row = document.createElement("div");
+        row.className = "row" + (i === currentIndex ? " current" : "");
+
+        const left = document.createElement("div");
+        left.innerHTML = `<div class="name">${name}</div>` +
+          (i===currentIndex ? `<div class="sub">Your turn — tap “I took”</div>` : "");
+
+        const right = document.createElement("div");
+        const btn = document.createElement("button");
+        btn.textContent = i===currentIndex ? "I took" : "—";
+        btn.disabled = i!==currentIndex;
+        btn.onclick = async () => {
+          statusEl.textContent = "Saving…";
+          try {
+            await runTransaction(db, async (tx) => {
+              const snap = await tx.get(roomRef);
+              let idx = 0;
+              if (snap.exists()) {
+                idx = snap.data().currentIndex || 0;
+              }
+              const next = (idx + 1) % FRIENDS.length;
+              tx.set(roomRef, { currentIndex: next }, { merge: true });
+            });
+            statusEl.textContent = "Saved";
+          } catch (e) {
+            console.error(e);
+            statusEl.textContent = "Failed to save";
+            alert("Failed to save. Check Firestore rules.");
+          }
+        };
+
+        right.appendChild(btn);
+        row.appendChild(left);
+        row.appendChild(right);
+        listEl.appendChild(row);
+      });
+
+      weekInfo.textContent = `Turn ${currentIndex + 1} / ${FRIENDS.length}`;
+    }
+
+    // Live updates from Firestore (persists across refresh)
+    onSnapshot(roomRef, async (snap) => {
+      if (!snap.exists()) {
+        // Create the doc on first run with index 0
+        await setDoc(roomRef, { currentIndex: 0 }, { merge: true });
+        currentIndex = 0;
+      } else {
+        currentIndex = snap.data().currentIndex || 0;
+      }
+      render();
+    });
+  </script>
+</body>
+</html>
